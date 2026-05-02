@@ -877,7 +877,12 @@ public actor OpenId4VciService {
 	}
 
 	private func validateSdJwtIssuer(_ serialized: String, expectedIssuer: URL) throws {
-		let (_, payload, _) = StorageManager.extractJWTParts(serialized)
+		let (header, payload, _) = StorageManager.extractJWTParts(serialized)
+		// When x5c is present in the JWT header, issuer identity comes from the cert chain.
+		// Requiring iss in the payload is stricter than RFC 9701 §3.2 — skip the check (Credo parity).
+		if let headerData = Data(base64URLEncoded: header),
+		   let headerJson = try? JSON(data: headerData),
+		   headerJson["x5c"].array != nil { return }
 		guard let payloadData = Data(base64URLEncoded: payload) else {
 			throw PresentationSession.makeError(str: "Failed to decode SD-JWT payload")
 		}
