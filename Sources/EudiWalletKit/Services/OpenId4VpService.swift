@@ -330,9 +330,19 @@ public final class OpenId4VpService: @unchecked Sendable, PresentationService {
 		result = SecTrustCreateWithCertificates(certsDer as CFArray, policy, &trust)
 		guard result == errSecSuccess, let trust else { logger.error("Chain verification error: \(result.message)"); return false }
 		self.readerCertificateIssuer = x509.subject.description
-		(isValid, validationMessages, _) = SecurityHelpers.isMdocX5cValid(secCerts: certsDer, usage: .mdocReaderAuth, rootIaca: transferInfo.iaca)
-		self.readerAuthValidated = isValid
-		self.readerCertificateValidationMessage = validationMessages.joined(separator: "\n")
+		if transferInfo.iaca.isEmpty {
+			// No IACA roots configured — fall back to iOS system trust evaluation.
+			// Accepts any cert chain trusted by the system (Let's Encrypt, DigiCert, etc.).
+			// This is the correct behaviour for dev/demo deployments without official IACA roots.
+			var cfError: CFError?
+			isValid = SecTrustEvaluateWithError(trust, &cfError)
+			self.readerAuthValidated = isValid
+			self.readerCertificateValidationMessage = isValid ? "System trust" : (cfError.map { "\($0)" } ?? "System trust evaluation failed")
+		} else {
+			(isValid, validationMessages, _) = SecurityHelpers.isMdocX5cValid(secCerts: certsDer, usage: .mdocReaderAuth, rootIaca: transferInfo.iaca)
+			self.readerAuthValidated = isValid
+			self.readerCertificateValidationMessage = validationMessages.joined(separator: "\n")
+		}
 		self.certificateChain = certsData
 		return isValid
 	}
