@@ -21,6 +21,7 @@ import MdocDataModel18013
 import MdocDataTransfer18013
 import WalletStorage
 import LocalAuthentication
+import OpenID4VP
 import struct WalletStorage.Document
 
 /// Sendable box for `[String: Any]?` — all PaSO SCA claim values are Strings/[String],
@@ -61,6 +62,33 @@ public final class PresentationSession: @unchecked Sendable, ObservableObject {
 	var userAuthenticationRequired: Bool
 	/// transaction logger
 	public var transactionLogger: (any TransactionLogger)?
+
+	/// Doc-type or VCT identifiers of credential sets that the verifier marked as optional
+	/// (`required: false` in the DCQL `credential_sets` array). Empty when no credential_sets
+	/// are present or all sets are required.
+	public var optionalDocTypeOrVcts: Set<String> {
+		guard let service = presentationService as? OpenId4VpService,
+			  let dcql = service.dcql,
+			  let credentialSets = dcql.credentialSets else { return [] }
+		var result = Set<String>()
+		for credSet in credentialSets where (credSet.required ?? CredentialSetQuery.defaultRequiredValue) == false {
+			for option in credSet.options {
+				for queryId in option {
+					guard let query = dcql.credentials.first(where: { $0.id.value == queryId.value }) else { continue }
+					let meta = query.meta
+					// SD-JWT VC: meta.vct_values is an array of VCT strings
+					for vct in meta["vct_values"].arrayValue {
+						if let s = vct.string { result.insert(s) }
+					}
+					// MSO mdoc: meta.doctype_value is a string
+					if let docType = meta["doctype_value"].string {
+						result.insert(docType)
+					}
+				}
+			}
+		}
+		return result
+	}
 
 	public init(presentationService: any PresentationService, storageManager: StorageManager? = nil, storageService: (any DataStorageService)? = nil, docIdToPresentInfo: [Document.ID: DocPresentInfo], documentKeyIndexes: [Document.ID: Int], userAuthenticationRequired: Bool, transactionLogger: (any TransactionLogger)? = nil) {
 		self.presentationService = presentationService
