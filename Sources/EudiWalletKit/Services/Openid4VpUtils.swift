@@ -109,7 +109,7 @@ class OpenId4VpUtils {
 		return nil
 	}
 
-	static func getSdJwtPresentation(_ sdJwt: SignedSDJWT, hashingAlg: HashingAlgorithm, signer: SecureAreaSigner, signAlg: JSONWebAlgorithms.SigningAlgorithm, requestItems: [RequestItem], nonce: String, aud: String, transactionData: [TransactionData]?) async throws -> SignedSDJWT? {
+	static func getSdJwtPresentation(_ sdJwt: SignedSDJWT, hashingAlg: HashingAlgorithm, signer: SecureAreaSigner, signAlg: JSONWebAlgorithms.SigningAlgorithm, requestItems: [RequestItem], nonce: String, aud: String, transactionData: [TransactionData]?, additionalKBJWTClaims: [String: Any]? = nil) async throws -> SignedSDJWT? {
 		guard let allPathsDict = (try sdJwt.recreateClaims()).disclosuresPerClaimPath else { throw WalletError(description: "No disclosures found") }
 		let allPaths = Array(allPathsDict.keys)
 		let query = Set(allPaths.filter { path in requestItems.contains(where: { r in r.claimPath == path }) })
@@ -118,14 +118,16 @@ class OpenId4VpUtils {
 		guard let presentedSdJwt else { return nil }
 		let digestCreator = DigestCreator(hashingAlgorithm: hashingAlg)
 		guard let sdHash = digestCreator.hashAndBase64Encode(input: CompactSerialiser(signedSDJWT: presentedSdJwt).serialised) else { return nil }
-    	var payload = [Keys.nonce.rawValue: nonce, Keys.aud.rawValue: aud, Keys.iat.rawValue: Int(Date().timeIntervalSince1970.rounded()), Keys.sdHash.rawValue: sdHash] as [String : Any]
-		  // Process transaction data hashes if available
+		var payload = [Keys.nonce.rawValue: nonce, Keys.aud.rawValue: aud, Keys.iat.rawValue: Int(Date().timeIntervalSince1970.rounded()), Keys.sdHash.rawValue: sdHash] as [String: Any]
 		if let transactionData, !transactionData.isEmpty {
 			let transactionDataHashes = transactionData.map { td -> String in
-				switch td {	case .sdJwtVc(let v): return sha256Hash(v) }
+				switch td { case .sdJwtVc(let v): return sha256Hash(v) }
 			}
 			payload["transaction_data_hashes_alg"] = "sha-256"
 			payload["transaction_data_hashes"] = transactionDataHashes
+		}
+		if let extra = additionalKBJWTClaims {
+			for (k, v) in extra { payload[k] = v }
 		}
 		let kbJwt: KBJWT = try KBJWT(header: DefaultJWSHeaderImpl(algorithm: signAlg), kbJwtPayload: JSON(payload))
 		let holderPresentation = try await SDJWTIssuer.presentation(holdersPrivateKey: signer, signedSDJWT: presentedSdJwt, disclosuresToPresent: presentedSdJwt.disclosures, keyBindingJWT: kbJwt)

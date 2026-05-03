@@ -43,9 +43,17 @@ public protocol PresentationService: Sendable {
 	///   - userAccepted: True if user accepted to send the response
 	///   - itemsToSend: The selected items to send organized in document types and namespaces (see ``RequestItems``)
 	func sendResponse(userAccepted: Bool, itemsToSend: RequestItems, onSuccess: ( @Sendable (URL?) -> Void)?) async throws
-	
+
 	/// wait for disconnect
 	func waitForDisconnect() async throws
+}
+
+public extension PresentationService {
+	/// Overload that accepts additional KB-JWT claims for PaSO SCA conformance.
+	/// Default implementation ignores the extra claims (BLE / fault services).
+	func sendResponse(userAccepted: Bool, itemsToSend: RequestItems, additionalKBJWTClaims: [String: Any]?, onSuccess: (@Sendable (URL?) -> Void)?) async throws {
+		try await sendResponse(userAccepted: userAccepted, itemsToSend: itemsToSend, onSuccess: onSuccess)
+	}
 }
 
 public protocol NetworkingProtocol: Sendable {

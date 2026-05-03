@@ -217,12 +217,18 @@ public final class OpenId4VpService: @unchecked Sendable, PresentationService {
 		dcqlQueryable = DefaultDcqlQueryable(credentials: credentialMap, claimPaths: claimPaths, claimValues: claimValues)
 	}
 
+	/// Protocol conformance: delegates to the overload with additionalKBJWTClaims = nil.
+	public func sendResponse(userAccepted: Bool, itemsToSend: RequestItems, onSuccess: ((URL?) -> Void)?) async throws {
+		try await sendResponse(userAccepted: userAccepted, itemsToSend: itemsToSend, additionalKBJWTClaims: nil, onSuccess: onSuccess)
+	}
+
 	/// Send response via openid4vp
 	///
 	/// - Parameters:
 	///   - userAccepted: True if user accepted to send the response
 	///   - itemsToSend: The selected items to send organized in document types and namespaces
-	public func sendResponse(userAccepted: Bool, itemsToSend: RequestItems, onSuccess: ((URL?) -> Void)?) async throws {
+	///   - additionalKBJWTClaims: Extra claims to merge into the SD-JWT KB-JWT payload (e.g. PaSO SCA claims)
+	public func sendResponse(userAccepted: Bool, itemsToSend: RequestItems, additionalKBJWTClaims: [String: Any]?, onSuccess: ((URL?) -> Void)?) async throws {
 		guard dcql != nil, let resolved = resolvedRequestData else {
 			throw PresentationSession.makeError(str: "Unexpected error")
 		}
@@ -254,7 +260,7 @@ public final class OpenId4VpService: @unchecked Sendable, PresentationService {
 				let signer = try SecureAreaSigner(secureArea: dpk.secureArea, id: docId, index: dpk.index, ecAlgorithm: dsa, unlockData: unlockData)
 				let signAlg = try SecureAreaSigner.getSigningAlgorithm(dsa)
 				let hai = HashingAlgorithmIdentifier(rawValue: transferInfo.hashingAlgs[docId] ?? "") ?? .SHA3256
-				guard let presented = try await OpenId4VpUtils.getSdJwtPresentation(docSigned, hashingAlg: hai.hashingAlgorithm(), signer: signer, signAlg: signAlg, requestItems: items, nonce: vpNonce, aud: vpClientId, transactionData: transactionData) else {
+				guard let presented = try await OpenId4VpUtils.getSdJwtPresentation(docSigned, hashingAlg: hai.hashingAlgorithm(), signer: signer, signAlg: signAlg, requestItems: items, nonce: vpNonce, aud: vpClientId, transactionData: transactionData, additionalKBJWTClaims: additionalKBJWTClaims) else {
 					continue
 				}
 				inputToPresentations.append((inputDescrId, docId, VerifiablePresentation.generic(presented.serialisation)))

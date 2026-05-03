@@ -22,6 +22,14 @@ import MdocDataTransfer18013
 import WalletStorage
 import LocalAuthentication
 import struct WalletStorage.Document
+
+/// Sendable box for `[String: Any]?` — all PaSO SCA claim values are Strings/[String],
+/// so borrowing thread-safety here is safe. The box is private to this module.
+final class _SendableClaimsBox: @unchecked Sendable {
+	let value: [String: Any]?
+	init(_ value: [String: Any]?) { self.value = value }
+}
+
 /// Presentation session
 ///
 /// This class wraps the ``PresentationService`` instance, providing bindable fields to a SwifUI view
@@ -189,11 +197,13 @@ public final class PresentationSession: @unchecked Sendable, ObservableObject {
 	/// - Parameters:
 	///   - userAccepted: Whether user confirmed to send the response
 	///   - itemsToSend: Data to send organized into a hierarchy of doc.types and namespaces
+	///   - additionalKBJWTClaims: Extra claims merged into the SD-JWT KB-JWT (e.g. PaSO SCA claims)
 	///   - onCancel: Action to perform if the user cancels the biometric authentication
-	public func sendResponse(userAccepted: Bool, itemsToSend: RequestItems, onCancel: (() -> Void)? = nil, onSuccess: (@Sendable (URL?) -> Void)? = nil) async throws {
+	public func sendResponse(userAccepted: Bool, itemsToSend: RequestItems, additionalKBJWTClaims: [String: Any]? = nil, onCancel: (() -> Void)? = nil, onSuccess: (@Sendable (URL?) -> Void)? = nil) async throws {
 		do {
 			await MainActor.run { status = .userSelected }
-			let action = { [ weak self] in _ = try await self?.presentationService.sendResponse(userAccepted: userAccepted, itemsToSend: itemsToSend, onSuccess: onSuccess) }
+			let claimsBox = _SendableClaimsBox(additionalKBJWTClaims)
+			let action = { [weak self] in _ = try await self?.presentationService.sendResponse(userAccepted: userAccepted, itemsToSend: itemsToSend, additionalKBJWTClaims: claimsBox.value, onSuccess: onSuccess) }
 			try await EudiWallet.authorizedAction(action: action, disabled: !userAuthenticationRequired, dismiss: { onCancel?() }, localizedReason: NSLocalizedString("authenticate_to_share_data", comment: "") )
 			try await updateKeyBatchInfoAndDeleteCredentialIfNeeded(presentedIds: Array(itemsToSend.keys), zkpDocumentIds: presentationService.zkpDocumentIds)
 			await MainActor.run { status = .responseSent; storageManager?.objectWillChange.send() }
