@@ -217,11 +217,6 @@ public final class OpenId4VpService: @unchecked Sendable, PresentationService {
 		dcqlQueryable = DefaultDcqlQueryable(credentials: credentialMap, claimPaths: claimPaths, claimValues: claimValues)
 	}
 
-	/// Protocol conformance: delegates to the overload with additionalKBJWTClaims = nil.
-	public func sendResponse(userAccepted: Bool, itemsToSend: RequestItems, onSuccess: ((URL?) -> Void)?) async throws {
-		try await sendResponse(userAccepted: userAccepted, itemsToSend: itemsToSend, additionalKBJWTClaims: nil, onSuccess: onSuccess)
-	}
-
 	/// Send response via openid4vp
 	///
 	/// - Parameters:
