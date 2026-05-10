@@ -129,8 +129,27 @@ class OpenId4VpUtils {
 		if let extra = additionalKBJWTClaims {
 			for (k, v) in extra { payload[k] = v }
 		}
+		// Phase C debugging: log the kb-jwt payload + the disclosed claim paths
+		// so we can compare against the verifier's DCQL.
+		do {
+			let payloadJSONData = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+			if let payloadJSON = String(data: payloadJSONData, encoding: .utf8) {
+				let pathsList = query.map { $0.value.map(\.description).joined(separator: ".") }.sorted().joined(separator: ", ")
+				print("[Openid4VpUtils.getSdJwtPresentation] disclosed-paths: [\(pathsList)] kb-jwt-payload: \(payloadJSON)")
+			}
+		} catch {
+			print("[Openid4VpUtils.getSdJwtPresentation] payload-serialise-error: \(error)")
+		}
 		let kbJwt: KBJWT = try KBJWT(header: DefaultJWSHeaderImpl(algorithm: signAlg), kbJwtPayload: JSON(payload))
 		let holderPresentation = try await SDJWTIssuer.presentation(holdersPrivateKey: signer, signedSDJWT: presentedSdJwt, disclosuresToPresent: presentedSdJwt.disclosures, keyBindingJWT: kbJwt)
+		// Test instrumentation: write the serialized SD-JWT (with kb-jwt) to a
+		// known temp file so integration tests can replay it as the gateway
+		// webhook body when EUDIPLO can't reach the local gateway. No-op in
+		// production: the file lives in the simulator's tmp and is overwritten
+		// each presentation.
+		let serialized = CompactSerialiser(signedSDJWT: holderPresentation).serialised
+		let url = FileManager.default.temporaryDirectory.appendingPathComponent("eudipal-last-vp-token.txt")
+		try? serialized.data(using: .utf8)?.write(to: url, options: .atomic)
 		return holderPresentation
 	}
 
